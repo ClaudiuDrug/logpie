@@ -8,7 +8,7 @@ from os import makedirs, walk
 from os.path import join, exists
 from shutil import rmtree
 from sys import stdout
-from typing import Union, Any, Generator
+from typing import Union, Generator
 
 from cfgpie import get_config, CfgParser
 from customlib.filehandlers import FileHandler
@@ -21,7 +21,43 @@ cfg.set_defaults(directory=ROOT)
 cfg.read_dict(dictionary=BACKUP, source="<backup>")
 
 
-class OutputHandler(ABC):
+class AbstractHandler(ABC):
+    """Base handler."""
+
+    def __init__(self, **kwargs):
+        self.set_config(**kwargs)
+
+    def set_config(self, **kwargs):
+
+        if "config" in kwargs:
+
+            if isinstance(kwargs.get("config"), str):
+                self.cfg: CfgParser = get_config(name=kwargs.pop("config"))
+
+            elif isinstance(kwargs.get("config"), CfgParser):
+                self.cfg: CfgParser = kwargs.pop("config")
+
+        elif len(kwargs) > 0:
+            options: dict = BACKUP.get("LOGGER").copy()
+            options.update(**kwargs)
+
+            if self.cfg is cfg:
+                self.cfg: CfgParser = get_config(name=self)
+                self.cfg.set_defaults(directory=ROOT)
+
+            self.cfg.read_dict(dictionary={"LOGGER": options}, source="<logging>")
+
+    @property
+    def cfg(self) -> CfgParser:
+        global cfg
+        return getattr(self, "_cfg", cfg)
+
+    @cfg.setter
+    def cfg(self, value: CfgParser):
+        setattr(self, "_cfg", value)
+
+
+class OutputHandler(AbstractHandler):
     """Base abstract handler for stream output classes."""
 
     def emit(self, record: str):
@@ -54,7 +90,8 @@ class NoStream(OutputHandler):
 class FileStream(OutputHandler):
     """Handler used for logging to a file."""
 
-    def __init__(self):
+    def __init__(self, **kwargs):
+        super(FileStream, self).__init__(**kwargs)
 
         self._file_path = None
         self._folder_path = None
@@ -96,23 +133,22 @@ class FileStream(OutputHandler):
         return self._folder_path
 
     def get_file_name(self):
-        return f"{date.today()}_{cfg.get('LOGGER', 'basename')}.{self.get_file_idx()}.log"
+        return f"{date.today()}_{self.cfg.get('LOGGER', 'basename')}.{self.get_file_idx()}.log"
 
     def get_file_idx(self):
         self._file_idx += 1
         return self._file_idx
 
-    @staticmethod
-    def _get_folder_path() -> str:
+    def _get_folder_path(self) -> str:
         today: date = date.today()
         return join(
-            cfg.get("LOGGER", "folder", fallback=FOLDER),
+            self.cfg.get("LOGGER", "folder", fallback=FOLDER),
             str(today.year),
             today.strftime("%B").lower()
         )
 
 
-class RowFactory(object):
+class RowFactory(AbstractHandler):
 
     @staticmethod
     def _get_info(exception: Union[BaseException, tuple, bool]) -> Union[TRACEBACK, FRAME]:
@@ -148,7 +184,7 @@ class RowFactory(object):
         )
 
 
-class FormatFactory(object):
+class FormatFactory(AbstractHandler):
 
     @staticmethod
     def _apply_format(row: ROW) -> str:
@@ -160,52 +196,27 @@ class FormatFactory(object):
         return self._apply_format(row)
 
 
-class Handlers(object):
+class StreamHandler(AbstractHandler):
 
-    def __init__(self):
-        self.console: StdStream = StdStream()
-        self.nostream: NoStream = NoStream()
-        self.file: FileStream = FileStream()
+    def __init__(self, **kwargs):
+        super(StreamHandler, self).__init__(**kwargs)
 
-    def get(self, target: str) -> Any:
-        return self.__dict__.get(target)
-
-
-class StreamHandler(object):
-
-    _handlers: Handlers = Handlers()
+        self.nostream: NoStream = NoStream(config=self.cfg)
+        self.console: StdStream = StdStream(config=self.cfg)
+        self.file: FileStream = FileStream(config=self.cfg)
 
     @property
     def handler(self) -> OutputHandler:
-        return self._handlers.get(
-            target=cfg.get("LOGGER", "handler")
+        return self.__dict__.get(
+            self.cfg.get("LOGGER", "handler")
         )
 
     def emit(self, message: str):
         self.handler.emit(message)
 
 
-class BaseLogger(object):
+class BaseLogger(AbstractHandler):
     """Base logging facility."""
-
-    @staticmethod
-    def _set_config(**kwargs):
-        global cfg
-
-        if "config" in kwargs:
-            cfg = kwargs.pop("config")
-
-            if isinstance(cfg, str):
-                cfg = get_config(name=cfg)
-
-        else:
-            options: dict = BACKUP.get("LOGGER").copy()
-            options.update(**kwargs)
-
-            cfg.read_dict(
-                dictionary={"LOGGER": options},
-                source="<logging>"
-            )
 
     @staticmethod
     def _months_list(today: date):
@@ -216,20 +227,16 @@ class BaseLogger(object):
         ]
 
     def __init__(self, **kwargs):
-        self.set_config(**kwargs)
+        super(BaseLogger, self).__init__(**kwargs)
 
-        self.factory = RowFactory()
-        self.formatter = FormatFactory()
-        self.stream = StreamHandler()
+        self.factory = RowFactory(config=self.cfg)
+        self.formatter = FormatFactory(config=self.cfg)
+        self.stream = StreamHandler(config=self.cfg)
 
         register(self.cleanup)
 
-    def set_config(self, **kwargs):
-        if len(kwargs) > 0:
-            self._set_config(**kwargs)
-
     def cleanup(self):
-        root: str = cfg.get("LOGGER", "folder", fallback=FOLDER)
+        root: str = self.cfg.get("LOGGER", "folder", fallback=FOLDER)
 
         if exists(root):
 
@@ -277,7 +284,7 @@ class Logger(BaseLogger):
         :param message: The message to be logged.
         :param exception: Add exception info to the log message.
         """
-        if cfg.getboolean("LOGGER", "debug") is True:
+        if self.cfg.getboolean("LOGGER", "debug") is True:
             self.emit(message=message, exception=exception)
 
     def info(self, message: str, exception: Union[BaseException, tuple, bool] = None):
