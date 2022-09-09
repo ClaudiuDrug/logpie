@@ -5,7 +5,7 @@ from atexit import register
 from datetime import date
 from glob import glob
 from os import makedirs, walk
-from os.path import join, exists
+from os.path import join, exists, isdir
 from shutil import rmtree
 from sys import stdout
 from typing import Union, Generator
@@ -22,10 +22,40 @@ cfg.read_dict(dictionary=BACKUP, source="<backup>")
 
 
 class AbstractHandler(ABC):
-    """Base handler."""
+
+    __shared_state = dict()
 
     def __init__(self, **kwargs):
+        self.shared = kwargs.pop("__shared__", self.__shared_state)
         self.set_config(**kwargs)
+
+    @property
+    def cfg(self) -> CfgParser:
+        global cfg
+        return self.shared.get("cfg", cfg)
+
+    @cfg.setter
+    def cfg(self, value: CfgParser):
+        self.shared.update(cfg=value)
+
+    @cfg.deleter
+    def cfg(self):
+        try:
+            del self.shared["cfg"]
+        except KeyError:
+            pass
+
+    @property
+    def shared(self) -> dict:
+        return self.__dict__.get("__shared__")
+
+    @shared.setter
+    def shared(self, value: dict):
+        self.__dict__.update(__shared__=value)
+
+    @shared.deleter
+    def shared(self):
+        del self.__dict__["__shared__"]
 
     def set_config(self, **kwargs):
 
@@ -38,23 +68,18 @@ class AbstractHandler(ABC):
                 self.cfg: CfgParser = kwargs.pop("config")
 
         elif len(kwargs) > 0:
+            defaults = kwargs.pop("defaults", None)
+
             options: dict = BACKUP.get("LOGGER").copy()
             options.update(**kwargs)
 
             if self.cfg is cfg:
                 self.cfg: CfgParser = get_config(name=self)
-                self.cfg.set_defaults(directory=ROOT)
+
+                if defaults is not None:
+                    self.cfg.set_defaults(**defaults)
 
             self.cfg.read_dict(dictionary={"LOGGER": options}, source="<logging>")
-
-    @property
-    def cfg(self) -> CfgParser:
-        global cfg
-        return getattr(self, "_cfg", cfg)
-
-    @cfg.setter
-    def cfg(self, value: CfgParser):
-        setattr(self, "_cfg", value)
 
 
 class OutputHandler(AbstractHandler):
@@ -201,9 +226,9 @@ class StreamHandler(AbstractHandler):
     def __init__(self, **kwargs):
         super(StreamHandler, self).__init__(**kwargs)
 
-        self.nostream: NoStream = NoStream(config=self.cfg)
-        self.console: StdStream = StdStream(config=self.cfg)
-        self.file: FileStream = FileStream(config=self.cfg)
+        self.nostream: NoStream = NoStream(__shared__=self.shared)
+        self.console: StdStream = StdStream(__shared__=self.shared)
+        self.file: FileStream = FileStream(__shared__=self.shared)
 
     @property
     def handler(self) -> OutputHandler:
@@ -227,18 +252,19 @@ class BaseLogger(AbstractHandler):
         ]
 
     def __init__(self, **kwargs):
-        super(BaseLogger, self).__init__(**kwargs)
+        self.__shared_state = dict()
+        super(BaseLogger, self).__init__(__shared__=self.__shared_state, **kwargs)
 
-        self.factory = RowFactory(config=self.cfg)
-        self.formatter = FormatFactory(config=self.cfg)
-        self.stream = StreamHandler(config=self.cfg)
+        self.factory = RowFactory(__shared__=self.__shared_state)
+        self.formatter = FormatFactory(__shared__=self.__shared_state)
+        self.stream = StreamHandler(__shared__=self.__shared_state)
 
         register(self.cleanup)
 
     def cleanup(self):
         root: str = self.cfg.get("LOGGER", "folder", fallback=FOLDER)
 
-        if exists(root):
+        if exists(root) and isdir(root):
 
             results = self._scan(root)
 

@@ -25,7 +25,8 @@ FOLDER: str = join(ROOT, "logs")
 BACKUP: dict = {
     "LOGGER": {
         # "basename": "logpie",  # if handler is `file`
-        "handler": "console",  # or `file` or `nostream` (does nothing)
+        # "folder": r"${DEFAULT:directory}\logs",
+        "handler": "console",  # or `file` or `nostream` (no output)
         "debug": False,  # if set to `True` it will also print `DEBUG` messages
     }
 }
