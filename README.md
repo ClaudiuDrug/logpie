@@ -41,12 +41,12 @@ BACKUP: dict = {
     "LOGGER": {
         "basename": "logpie",  # if handler is `file`
         "folder": r"${DEFAULT:directory}\logs",
-        "handler": "file",  # or `console` or `nostream` (no output)
-        "debug": True,  # if set to `True` it will also print `DEBUG` messages
+        "handlers": ["file"],  # or `console` or both (always as list)
+        "level": 0,  # logs all messages above this level
     }
 }
 
-# NOTE: The constants above serve the usage example
+# NOTE: The constants above serve the usage example,
 #       and you can use whatever suits you best.
 
 # ********************** get `ConfigParser` instance: *********************** #
@@ -57,32 +57,33 @@ cfg.open(file_path=CONFIG, encoding="UTF-8", fallback=BACKUP)
 
 # ************************* get `Logger` instance: ************************** #
 
+# we can pass a config instance:
 log: Logger = get_logger(name="my_logger", config=cfg)
-# we can pass a config instance
 ```
 
 or
 
 ```python
+# it will look for a config instance named `my_config`:
 log: Logger = get_logger(name="my_logger", config="my_config")
-# it will look for a config instance named `my_config`
 ```
 
 or
 
 ```python
-log: Logger = get_logger(name="my_logger", basename="logpie", handler="file", debug=True)
-# it will create and use its own config instance
+# it will create and use its own config instance:
+log: Logger = get_logger(name="my_logger", level="debug", handlers="file", basename="logpie")
 
 
-log.debug("Testing debug messages...")
-log.info("Testing info messages...")
-log.warning("Testing warning messages...")
-log.error("Testing error messages...")
-log.critical("Testing critical messages...")
+if __name__ == '__main__':
+    log.debug("Testing debug messages...")
+    log.info("Testing info messages...")
+    log.warning("Testing warning messages...")
+    log.error("Testing error messages...")
+    log.critical("Testing critical messages...")
 ```
 
-By default, debugging is set to False and must be enabled to work.
+By default, logging `level` is set to `NOTSET` (0) and it logs all messages.
 
 The log file is prefixed with a date and will have an index number attached before the extension (ex: `2022-08-01_logpie.1.log`).
 When it reaches `1 Mb` the file handler will switch to another file by incrementing its index with `1`.

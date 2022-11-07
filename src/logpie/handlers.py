@@ -1,149 +1,401 @@
 # -*- coding: UTF-8 -*-
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from atexit import register
-from datetime import date
-from glob import glob
-from os import makedirs, walk
-from os.path import join, exists, isdir
-from shutil import rmtree
-from sys import stdout
-from typing import Union, Generator
+from collections.abc import Mapping
+from dataclasses import dataclass, make_dataclass, asdict, field
+from datetime import date, datetime
+from os.path import join, exists
+from string import Template
+from sys import stdout, stderr
+from typing import List, TextIO, Union
 
 from cfgpie import get_config, CfgParser
-from customlib.filehandlers import FileHandler
+from colorpie import Style4Bit
 
-from .constants import BACKUP, ROOT, RLOCK, ROW, FRAME, TRACEBACK, FOLDER
-from .utils import get_traceback, get_caller, get_level, get_timestamp, archive
+from .constants import (
+    THREAD_LOCKS,
+    REGEX,
+    FRAME,
+    HANDLERS,
+    FILE_MODES,
+    FILESTREAM,
+    FORMATTING,
+    LEVELS,
+    STRKEYS,
+    INTKEYS,
+    BACKUP
+)
+from .exceptions import UnknownLevelError, UnknownModeError
+from .filehandlers import FileHandler
+from .registry import ClassRegistry
+from .stackframe import get_traceback, get_caller
+from .utils import update, get_local, get_fields, cleanup, dispatch_lock, ensure_tree
 
-cfg: CfgParser = get_config(name=f"logger.defaults")
-cfg.set_defaults(directory=ROOT)
-cfg.read_dict(dictionary=BACKUP, source="<backup>")
+
+@dataclass
+class Row(object):
+    timestamp: datetime = field(default=None)
+    level: str = field(default=None)
+    name: str = field(default=None)
+    source: FRAME = field(default=None)
+    message: str = field(default=None)
+
+    def as_dict(self) -> dict:
+        return asdict(self)
 
 
 class AbstractHandler(ABC):
+    """Base abstract handler."""
 
-    __shared_state = dict()
+    __shared__: dict = {}
 
-    def __init__(self, **kwargs):
-        self.shared = kwargs.pop("__shared__", self.__shared_state)
+    @staticmethod
+    def _check_config(instance: Union[CfgParser, str]) -> CfgParser:
+        if not isinstance(instance, (CfgParser, str)):
+            raise TypeError(
+                f"'instance' must be of type 'CfgParser' or 'int' not '{type(instance).__name__}'!"
+            )
+
+        if isinstance(instance, str):
+            return get_config(instance)
+
+        return instance
+
+    def __init__(self, name: str, **kwargs):
+        self._name = name
+        self._lock = dispatch_lock(name, THREAD_LOCKS)
         self.set_config(**kwargs)
 
     @property
-    def cfg(self) -> CfgParser:
-        global cfg
-        return self.shared.get("cfg", cfg)
-
-    @cfg.setter
-    def cfg(self, value: CfgParser):
-        self.shared.update(cfg=value)
-
-    @cfg.deleter
-    def cfg(self):
-        try:
-            del self.shared["cfg"]
-        except KeyError:
-            pass
+    def name(self):
+        return self._name
 
     @property
-    def shared(self) -> dict:
-        return self.__dict__.get("__shared__")
-
-    @shared.setter
-    def shared(self, value: dict):
-        self.__dict__.update(__shared__=value)
-
-    @shared.deleter
-    def shared(self):
-        del self.__dict__["__shared__"]
+    def cfg(self) -> CfgParser:
+        if self._name not in self.__shared__:
+            self._set_config(f"logpie.{self._name}")
+            self.cfg.read_dict(
+                dictionary={"LOGGER": BACKUP.copy()},
+                source="<backup>"
+            )
+        return self.__shared__.get(self._name)
 
     def set_config(self, **kwargs):
+        self._lock.acquire()
+        try:
+            if "config" in kwargs:
+                self._set_config(kwargs.pop("config"))
+        except TypeError:
+            raise
+        else:
+            self._update_config(**kwargs)
+        finally:
+            self._lock.release()
 
-        if "config" in kwargs:
+    def _set_config(self, instance: Union[CfgParser, str]):
+        self._lock.acquire()
+        try:
+            instance: CfgParser = self._check_config(instance)
+        except TypeError:
+            raise
+        else:
+            self.__shared__.update({self._name: instance})
+        finally:
+            self._lock.release()
 
-            if isinstance(kwargs.get("config"), str):
-                self.cfg: CfgParser = get_config(name=kwargs.pop("config"))
+    def _update_config(self, **kwargs):
+        with self._lock:
+            if len(kwargs) > 0:
+                self.cfg.read_dict(
+                    dictionary={"LOGGER": kwargs},
+                    source="<update>"
+                )
 
-            elif isinstance(kwargs.get("config"), CfgParser):
-                self.cfg: CfgParser = kwargs.pop("config")
 
-        elif len(kwargs) > 0:
-            defaults = kwargs.pop("defaults", None)
+class Formatter(AbstractHandler):
 
-            options: dict = BACKUP.get("LOGGER").copy()
-            options.update(**kwargs)
+    @property
+    def format(self) -> str:
+        return self.cfg.get(
+            "LOGGER", "format",
+            fallback=FORMATTING.FORMAT,
+            raw=True
+        )
 
-            if self.cfg is cfg:
-                self.cfg: CfgParser = get_config(name=self)
+    @property
+    def date_fmt(self):
+        return self.cfg.get(
+            "LOGGER", "date_fmt",
+            fallback=FORMATTING.DATE_FMT,
+            raw=True
+        )
 
-                if defaults is not None:
-                    self.cfg.set_defaults(**defaults)
+    @property
+    def source_fmt(self):
+        return self.cfg.get(
+            "LOGGER", "source_fmt",
+            fallback=FORMATTING.SOURCE_FMT,
+            raw=True
+        )
 
-            self.cfg.read_dict(dictionary={"LOGGER": options}, source="<logging>")
+    @property
+    def template(self) -> Template:
+        return Template(self.format)
+
+    def substitute(self, **kwargs) -> str:
+
+        if "timestamp" in kwargs:
+            timestamp: datetime = kwargs.pop("timestamp")
+
+            if isinstance(timestamp, datetime):
+                kwargs.update(
+                    timestamp=timestamp.strftime(self.date_fmt)
+                )
+
+        if "source" in kwargs:
+            source: FRAME = kwargs.pop("source")
+
+            if isinstance(source, FRAME):
+                template: Template = Template(self.source_fmt)
+                kwargs.update(
+                    source=template.safe_substitute(**source._asdict())
+                )
+
+        return self.template.safe_substitute(**kwargs)
+
+
+class RowFactory(AbstractHandler):
+    """Logging row constructor."""
+
+    @staticmethod
+    def _get_frame(exc_info: Union[BaseException, tuple, bool], depth: int) -> FRAME:
+        """
+        Get information about the most recent exception caught by an except clause
+        in the current stack frame or in an older stack frame.
+        """
+        if exc_info:
+            try:
+                return get_traceback(exc_info)
+            except AttributeError:
+                pass
+
+        return get_caller(depth)
+
+    @staticmethod
+    def _attach_info(message: str, *args, traceback: str = None) -> str:
+        """Attach `args` & traceback info to `message` if `frame` is an exception."""
+
+        if (len(args) == 1) and isinstance(args[0], Mapping):
+            args = args[0]
+
+        try:
+            message = message % args
+        except TypeError:
+            message = f"{message} args: {args}"
+
+        if traceback is not None:
+            return f"{message} Traceback: {traceback}"
+
+        return message
+
+    @property
+    def format(self) -> str:
+        return self.cfg.get("LOGGER", "format", fallback=FORMATTING.FORMAT, raw=True)
+
+    def build(self, level: int, msg: str, *args, **kwargs) -> Row:
+        frame: FRAME = self._get_frame(
+            exc_info=kwargs.pop("exc_info", None),
+            depth=kwargs.pop("depth", 6)
+        )
+
+        row_dict = dict(
+            timestamp=kwargs.pop("timestamp", get_local()),
+            level=INTKEYS.get(level),
+            name=self._name,
+            source=frame,
+            message=self._attach_info(msg, *args, traceback=frame.traceback),
+        )
+
+        if "extra" in kwargs:
+            fields: List[str] = get_fields(REGEX, self.format)
+
+            row = make_dataclass(
+                "Row",
+                fields=[
+                    (key, type(value), field(default=value))
+                    for key, value in kwargs.pop("extra").items()
+                    if (key in fields) and (key not in row_dict.keys())
+                ],
+                bases=(Row,)
+            )
+
+            return row(**row_dict)
+
+        return Row(**row_dict)
 
 
 class OutputHandler(AbstractHandler):
     """Base abstract handler for stream output classes."""
 
-    def emit(self, record: str):
-        self.write(record)
+    def __init__(self, name: str, **kwargs):
+        super(OutputHandler, self).__init__(name, **kwargs)
+        self._formatter = Formatter(name)
 
     @abstractmethod
     def write(self, *args, **kwargs):
         raise NotImplementedError
 
+    def emit(self, row: Row):
+        self.write(self.format(row))
 
+    def format(self, row: Row) -> str:
+        return self._formatter.substitute(**row.as_dict())
+
+
+@ClassRegistry.register("console")
 class StdStream(OutputHandler):
     """Handler used for logging to console."""
 
-    @staticmethod
-    def write(record: str):
+    def __init__(self, name: str, **kwargs):
+        super(StdStream, self).__init__(name, **kwargs)
+
+        self._warning = Style4Bit(color="yellow")
+        self._error = Style4Bit(color="red")
+
+        self._stream = stdout
+        self._style = None
+
+    def emit(self, row: Row):
+        try:
+            level: str = row.level.upper()
+        except AttributeError:
+            pass
+        else:
+            self._stream: TextIO = self._get_stream(level)
+            self._style: Style4Bit = self._get_style(level)
+        super(StdStream, self).emit(row)
+
+    def write(self, record: str):
         """Write the log record to console and flush the handle."""
-        stdout.write(f"{record}\n")
-        stdout.flush()
-
-
-class NoStream(OutputHandler):
-    """Handler used for... well... nothing."""
+        record: str = self._attach_style(record)
+        self._stream.write(f"{record}\n")
+        self._stream.flush()
 
     @staticmethod
-    def write(record: str):
-        """Do nothing for when you actually need it."""
-        pass
+    def _get_stream(level: str) -> TextIO:
+        if level in ["ERROR", "CRITICAL"]:
+            return stderr
+        else:
+            return stdout
+
+    def _get_style(self, level: str) -> Style4Bit:
+        if level in ["ERROR", "CRITICAL"]:
+            return self._error
+        elif level == "WARNING":
+            return self._warning
+
+    def _attach_style(self, record: str) -> str:
+        if self._style is not None:
+            return self._style.format(record)
+        return record
 
 
+@ClassRegistry.register("file")
 class FileStream(OutputHandler):
-    """Handler used for logging to a file."""
+    """Handler used for logging to console."""
 
-    def __init__(self, **kwargs):
-        super(FileStream, self).__init__(**kwargs)
+    @staticmethod
+    def _get_date() -> date:
+        return get_local().date()
 
-        self._file_path = None
-        self._folder_path = None
-        self._file_name = None
+    @staticmethod
+    def _file_mode(value: str) -> str:
+        if value not in FILE_MODES:
+            file_modes = dict(zip(FILE_MODES.values(), FILE_MODES.keys()))
+            value = file_modes.get(value)
+        return FILE_MODES.get(value)
+
+    def __init__(self, name: str, **kwargs):
+        super(FileStream, self).__init__(name, **kwargs)
 
         self._file_idx: int = 0
         self._file_size: int = 0
 
+        self._file_path = None
+        self._folder_path = None
+
+    @property
+    def should_cycle(self) -> bool:
+        return self.cfg.getboolean(
+            "LOGGER", "should_cycle",
+            fallback=FILESTREAM.SHOULD_CYCLE
+        )
+
+    @property
+    def is_structured(self) -> bool:
+        return self.cfg.getboolean(
+            "LOGGER", "is_structured",
+            fallback=FILESTREAM.IS_STRUCTURED
+        )
+
+    @property
+    def folder(self) -> str:
+        return self.cfg.get("LOGGER", "folder", fallback=FILESTREAM.FOLDER)
+
+    @property
+    def basename(self) -> str:
+        return self.cfg.get(
+            "LOGGER", "basename",
+            fallback=FILESTREAM.BASENAME
+        )
+
+    @property
+    def has_date(self) -> bool:
+        return self.cfg.getboolean(
+            "LOGGER", "has_date",
+            fallback=FILESTREAM.HAS_DATE
+        )
+
+    @property
+    def max_size(self) -> int:
+        return self.cfg.getint("LOGGER", "max_size", fallback=FILESTREAM.MAX_SIZE)
+
+    @property
+    def file_mode(self) -> str:
+        return self.cfg.get("LOGGER", "file_mode", fallback=FILESTREAM.FILE_MODE)
+
+    @property
+    def encoding(self) -> str:
+        return self.cfg.get("LOGGER", "encoding", fallback=FILESTREAM.ENCODING)
+
     def write(self, record: str):
-        with FileHandler(self.get_file_path(), "a", encoding="UTF-8") as fh:
-            fh.write(f"{record}\n")
-            self._file_size = fh.tell()
+        """Write the log record to console and flush the handle."""
+        file_path = self.get_file_path()
+        mode = self._check_mode(self.file_mode)
+
+        with FileHandler(file_path, mode, encoding=self.encoding) as file_handler:
+            file_handler.write(f"{record}\n")
+            self._file_size = file_handler.tell()
 
     def get_file_path(self):
-
         if self._file_path is None:
             self._file_path: str = self._get_file_path()
 
-        elif self._file_size >= ((1024 * 1024) - 1024):
+        elif not self.should_cycle:
+            return self._file_path
+
+        elif not (0 <= self._file_size <= (self.max_size - 512)):
             self._file_path: str = self._get_file_path()
 
         return self._file_path
 
     def _get_file_path(self):
-        file_path = join(self.get_folder_path(), self.get_file_name())
+        file_path = join(self.get_folder_path(), self._get_file_name())
 
-        if exists(file_path):
+        if exists(file_path) and self.should_cycle:
             return self._get_file_path()
 
         return file_path
@@ -152,199 +404,323 @@ class FileStream(OutputHandler):
         if self._folder_path is None:
             self._folder_path = self._get_folder_path()
 
-        if not exists(self._folder_path):
-            makedirs(self._folder_path)
+            ensure_tree(self._folder_path)
 
         return self._folder_path
 
-    def get_file_name(self):
-        return f"{date.today()}_{self.cfg.get('LOGGER', 'basename')}.{self.get_file_idx()}.log"
+    def _get_folder_path(self) -> str:
 
-    def get_file_idx(self):
+        if self.is_structured:
+            today: date = date.today()
+            return join(
+                self.folder,
+                str(today.year),
+                today.strftime("%B").lower()
+            )
+
+        return self.folder
+
+    def _get_file_name(self) -> str:
+        if not self.should_cycle:
+            return self._attach_date(f"{self.basename}.log")
+
+        return self._attach_date(
+            f"{self.basename}.{self._get_file_idx()}.log"
+        )
+
+    def _get_file_idx(self) -> int:
         self._file_idx += 1
         return self._file_idx
 
-    def _get_folder_path(self) -> str:
-        today: date = date.today()
-        return join(
-            self.cfg.get("LOGGER", "folder", fallback=FOLDER),
-            str(today.year),
-            today.strftime("%B").lower()
-        )
+    def _attach_date(self, basename: str) -> str:
+        if self.has_date:
+            return f"{date.today()}_{basename}"
+        return basename
 
+    def _check_mode(self, value: str) -> str:
+        if not isinstance(value, str):
+            raise ValueError(
+                f"'mode' must be of type 'str' not '{type(value).__name__}'!"
+            )
 
-class RowFactory(AbstractHandler):
+        if value not in ["append", "truncate", "a", "w"]:
+            raise UnknownModeError(
+                f"Unrecognised file mode: '{value}'!"
+            )
 
-    @staticmethod
-    def _get_info(exception: Union[BaseException, tuple, bool]) -> Union[TRACEBACK, FRAME]:
-        """
-        Get information about the most recent exception caught by an except clause
-        in the current stack frame or in an older stack frame.
-        """
-        if exception is not None:
-            try:
-                return get_traceback(exception)
-            except AttributeError:
-                pass
-
-        return get_caller(5)
-
-    @staticmethod
-    def _attach_info(message: str, frame: Union[TRACEBACK, FRAME]) -> str:
-        """Attach traceback info to `message` if `frame` is an exception."""
-        if isinstance(frame, TRACEBACK):
-            return f"{message} Traceback: {frame.message}"
-        return message
-
-    def build(self, message: str, exception: Union[BaseException, tuple, bool]) -> ROW:
-        """Take a `message` and `exception` as params and return a `ROW` object."""
-        frame = self._get_info(exception)
-        return ROW(
-            timestamp=get_timestamp(fmt="%Y-%m-%d %H:%M:%S.%f"),
-            level=get_level(3),
-            file=frame.file,
-            line=frame.line,
-            code=frame.code,
-            message=self._attach_info(message, frame),
-        )
-
-
-class FormatFactory(AbstractHandler):
-
-    @staticmethod
-    def _apply_format(row: ROW) -> str:
-        """Construct and return a string from the `ROW` object."""
-        return f"[{row.timestamp}] - {row.level} - <{row.file}, {row.line}, {row.code}>: {row.message}"
-
-    def build(self, row: ROW) -> str:
-        """Construct and return a new ROW object."""
-        return self._apply_format(row)
+        return self._file_mode(value)
 
 
 class StreamHandler(AbstractHandler):
-
-    def __init__(self, **kwargs):
-        super(StreamHandler, self).__init__(**kwargs)
-
-        self.nostream: NoStream = NoStream(__shared__=self.shared)
-        self.console: StdStream = StdStream(__shared__=self.shared)
-        self.file: FileStream = FileStream(__shared__=self.shared)
+    """Stream handler."""
 
     @property
-    def handler(self) -> OutputHandler:
-        return self.__dict__.get(
-            self.cfg.get("LOGGER", "handler")
-        )
+    def handlers(self) -> List[str]:
+        return self.cfg.getlist("LOGGER", "handlers", fallback=HANDLERS)
 
-    def emit(self, message: str):
-        self.handler.emit(message)
+    def handle(self, row: Row):
+        for handler in self._get_handlers():
+            handler.emit(row)
+
+    def _get_handlers(self) -> List[OutputHandler]:
+        return [
+            self._get_handler(handler)
+            for handler in self.handlers
+        ]
+
+    def _get_handler(self, target: str) -> OutputHandler:
+        if target not in self.__dict__:
+            self.__dict__.update(
+                {target: ClassRegistry.get(target, self._name)}
+            )
+        return self.__dict__.get(target)
 
 
 class BaseLogger(AbstractHandler):
-    """Base logging facility."""
+    """Base logging handler."""
+
+    def __init__(self, name: str = "default", **kwargs):
+
+        # allowed levels:
+        self._allowed: dict = {}
+
+        super(BaseLogger, self).__init__(name, **kwargs)
+
+        self._factory = RowFactory(name)
+        self._stream = StreamHandler(name)
+
+        # execute at exit:
+        register(self.close)
+
+    @property
+    def level(self) -> int:
+        return self.cfg.getint("LOGGER", "level", fallback=LEVELS.NOTSET)
+
+    @property
+    def folder(self) -> str:
+        return self.cfg.get("LOGGER", "folder", fallback=FILESTREAM.FOLDER)
+
+    @update
+    def log(self, level: Union[int, str], msg: str, *args, **kwargs):
+        """
+        Log a `msg % args` message with level `level`.
+
+        To add exception info to the message use the
+        keyword argument `exc_info` with a true value.
+
+        Example:
+
+            log("Testing '%s' messages!, "INFO", exc_info=True)
+
+        :param level: The logging level to be used.
+        :param msg: The message to be logged.
+        :param args: Optional arguments for `msg` formatting.
+        :param kwargs: Optional keyword arguments.
+        """
+        self._lock.acquire()
+        try:
+            level: int = self._check_level(level)
+        except (TypeError, UnknownLevelError):
+            raise
+        else:
+            if self._is_allowed(level):
+                self._log(level, msg, *args, **kwargs)
+        finally:
+            self._lock.release()
+
+    def close(self):
+        with self._lock:
+            cleanup(self.folder)
+
+    def _check_level(self, value: Union[str, int]) -> int:
+        """
+        Check if a given `value` is a valid logging level
+        and return its appropriate integer value.
+        """
+        if not isinstance(value, (str, int)):
+            raise TypeError(
+                f"'value' must be of type 'str' or 'int' not '{type(value).__name__}'!"
+            )
+
+        if not self._exists(value):
+            raise UnknownLevelError(
+                f"Unknown logging level: '{value}'!"
+            )
+
+        if isinstance(value, str):
+            return STRKEYS.get(value.upper())
+
+        return value
 
     @staticmethod
-    def _months_list(today: date):
-        return [
-            date(today.year, n, 1).strftime("%B").lower()
-            for n in range(1, 13)
-            if n != today.month
-        ]
+    def _exists(level: Union[str, int]) -> bool:
+        if isinstance(level, str):
+            return level.upper() in STRKEYS
+        return level in INTKEYS
 
-    def __init__(self, **kwargs):
-        self.__shared_state = dict()
-        super(BaseLogger, self).__init__(__shared__=self.__shared_state, **kwargs)
+    def _is_allowed(self, level: int) -> bool:
+        """
+        Check if the given `level` is registered as allowed.
+        """
+        with self._lock:
+            if level not in self._allowed:
+                self._allowed.update({level: level >= self.level})
+            return self._allowed.get(level)
 
-        self.factory = RowFactory(__shared__=self.__shared_state)
-        self.formatter = FormatFactory(__shared__=self.__shared_state)
-        self.stream = StreamHandler(__shared__=self.__shared_state)
+    def _log(self, level: int, msg, *args, **kwargs):
+        with self._lock:
+            row: Row = self._factory.build(level, msg, *args, **kwargs)
+            self._stream.handle(row)
 
-        register(self.cleanup)
+    def _update_config(self, **kwargs):
 
-    def cleanup(self):
-        root: str = self.cfg.get("LOGGER", "folder", fallback=FOLDER)
+        if "level" in kwargs:
+            self._update_level(kwargs)
 
-        if exists(root) and isdir(root):
+        if "handlers" in kwargs:
+            self._update_handlers(kwargs)
 
-            results = self._scan(root)
+        super(BaseLogger, self)._update_config(**kwargs)
 
-            for folder, files in results:
-                archive(f"{folder}.zip", files)
-                rmtree(folder)
+    def _update_level(self, kwargs):
+        try:
+            level: int = self._check_level(kwargs.pop("level"))
+        except (TypeError, UnknownLevelError):
+            raise
+        else:
+            kwargs.update(level=level)
+            self._reset_allowed(level)
 
-    def _scan(self, target: str) -> Generator:
-        today: date = date.today()
-        month: str = today.strftime("%B").lower()
-        months: list = self._months_list(today)
+    def _reset_allowed(self, level: int = LEVELS.NOTSET):
+        """Reset the logging levels dict."""
+        self._allowed.clear()
+        if level > LEVELS.NOTSET:
+            self._allowed.update({level: True})
 
-        for root, folders, files in walk(target):
+    @staticmethod
+    def _update_handlers(kwargs):
+        handlers = kwargs.get("handlers")
 
-            if (root == target) or (len(folders) == 0):
-                continue
+        if not isinstance(handlers, (list, tuple, str)):
+            raise TypeError(
+                f"'handlers' param must be of type 'list', 'tuple' or 'str' not '{type(handlers).__name__}'!"
+            )
 
-            for folder in folders:
-                if folder == month:
-                    continue
+        if isinstance(handlers, tuple):
+            kwargs.update(handlers=list(handlers))
 
-                if folder in months:
-
-                    folder: str = join(root, folder)
-                    files: str = join(folder, "*.log")
-
-                    yield folder, (file for file in glob(files))
-
-    def emit(self, message: str, exception: Union[BaseException, tuple, bool]):
-        with RLOCK:
-            row: ROW = self.factory.build(message, exception)
-            message: str = self.formatter.build(row)
-            self.stream.emit(message)
+        elif isinstance(handlers, str):
+            kwargs.update(handlers=[handlers])
 
 
 class Logger(BaseLogger):
-    """Logging facility with thread & file lock abilities."""
+    """Logging handler."""
 
-    def debug(self, message: str, exception: Union[BaseException, tuple, bool] = None):
+    @update
+    def debug(self, msg: str, *args, **kwargs):
         """
         Log a message with level `DEBUG`.
 
-        :param message: The message to be logged.
-        :param exception: Add exception info to the log message.
-        """
-        if self.cfg.getboolean("LOGGER", "debug") is True:
-            self.emit(message=message, exception=exception)
+        To add exception info to the message use the
+        keyword argument `exc_info` with a true value.
 
-    def info(self, message: str, exception: Union[BaseException, tuple, bool] = None):
+        Example:
+
+            log.debug("Testing '%s' messages!, "DEBUG", exc_info=True)
+
+        :param msg: The message to be logged.
+        :param args: Optional arguments for `msg` formatting.
+        :param kwargs: Optional keyword arguments.
+        """
+        self.log(LEVELS.DEBUG, msg, *args, **kwargs)
+
+    @update
+    def info(self, msg: str, *args, **kwargs):
         """
         Log a message with level `INFO`.
 
-        :param message: The message to be logged.
-        :param exception: Add exception info to the log message.
-        """
-        self.emit(message=message, exception=exception)
+        To add exception info to the message use the
+        keyword argument `exc_info` with a true value.
 
-    def warning(self, message: str, exception: Union[BaseException, tuple, bool] = None):
+        Example:
+
+            log.info("Testing '%s' messages!, "INFO", exc_info=True)
+
+        :param msg: The message to be logged.
+        :param args: Optional arguments for `msg` formatting.
+        :param kwargs: Optional keyword arguments.
+        """
+        self.log(LEVELS.INFO, msg, *args, **kwargs)
+
+    @update
+    def warning(self, msg: str, *args, **kwargs):
         """
         Log a message with level `WARNING`.
 
-        :param message: The message to be logged.
-        :param exception: Add exception info to the log message.
-        """
-        self.emit(message=message, exception=exception)
+        To add exception info to the message use the
+        keyword argument `exc_info` with a true value.
 
-    def error(self, message: str, exception: Union[BaseException, tuple, bool] = None):
+        Example:
+
+            log.warning("Testing '%s' messages!, "WARNING", exc_info=True)
+
+        :param msg: The message to be logged.
+        :param args: Optional arguments for `msg` formatting.
+        :param kwargs: Optional keyword arguments.
+        """
+        self.log(LEVELS.WARNING, msg, *args, **kwargs)
+
+    def warn(self, msg: str, *args, **kwargs):
+        """Don't use this one. Use `warning` instead."""
+        self.warning(msg, *args, depth=9, **kwargs)
+
+    @update
+    def error(self, msg: str, *args, **kwargs):
         """
         Log a message with level `ERROR`.
 
-        :param message: The message to be logged.
-        :param exception: Add exception info to the log message.
-        """
-        self.emit(message=message, exception=exception)
+        To add exception info to the message use the
+        keyword argument `exc_info` with a true value.
 
-    def critical(self, message: str, exception: Union[BaseException, tuple, bool] = None):
+        Example:
+
+            log.error("Testing '%s' messages!, "ERROR", exc_info=True)
+
+        :param msg: The message to be logged.
+        :param args: Optional arguments for `msg` formatting.
+        :param kwargs: Optional keyword arguments.
+        """
+        self.log(LEVELS.ERROR, msg, *args, **kwargs)
+
+    def exception(self, msg: str, *args, **kwargs):
+        """
+        Just a more convenient way of logging
+        an `ERROR` message with `exc_info=True`.
+        """
+
+        if "exc_info" not in kwargs:
+            kwargs.update(exc_info=True)
+
+        self.error(msg, *args, depth=9, **kwargs)
+
+    @update
+    def critical(self, msg: str, *args, **kwargs):
         """
         Log a message with level `CRITICAL`.
 
-        :param message: The message to be logged.
-        :param exception: Add exception info to the log message.
+        To add exception info to the message use the
+        keyword argument `exc_info` with a true value.
+
+        Example:
+
+            log.critical("Testing '%s' messages!, "CRITICAL", exc_info=True)
+
+        :param msg: The message to be logged.
+        :param args: Optional arguments for `msg` formatting.
+        :param kwargs: Optional keyword arguments.
         """
-        self.emit(message=message, exception=exception)
+        self.log(LEVELS.CRITICAL, msg, *args, **kwargs)
+
+    def fatal(self, msg: str, *args, **kwargs):
+        """Don't use this one. Use `critical` instead."""
+        self.critical(msg, *args, depth=9, **kwargs)
