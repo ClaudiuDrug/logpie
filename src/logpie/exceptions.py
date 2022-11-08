@@ -13,6 +13,10 @@ class UnknownLevelError(LogPieError):
     """Exception raised for unknown level errors."""
 
 
+class UnknownStateError(LogPieError):
+    """Exception raised for unknown state errors."""
+
+
 class HandlerKeyError(LogPieError):
     """Exception raised for handler key errors."""
 

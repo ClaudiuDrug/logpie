@@ -37,6 +37,19 @@ FILE_MODES: dict = {
     "truncate": "w",
 }
 
+# default state (enabled):
+STATE: str = "ON"  # or "OFF" (disabled)
+
+STATES: dict = {
+    True: "ON",
+    1: "ON",
+    "ENABLED": "ON",
+
+    False: "OFF",
+    0: "OFF",
+    "DISABLED": "OFF",
+}
+
 
 # file handler defaults:
 class FILESTREAM:
@@ -82,6 +95,7 @@ INTKEYS: dict = {value: key for key, value in STRKEYS.items()}
 
 # default logging parameters:
 BACKUP: dict = {
+    "state": STATE,
     "handlers": HANDLERS,
     "level": LEVELS.NOTSET,
 

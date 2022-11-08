@@ -21,6 +21,8 @@ from .constants import (
     FRAME,
     HANDLERS,
     FILE_MODES,
+    STATE,
+    STATES,
     FILESTREAM,
     FORMATTING,
     LEVELS,
@@ -28,7 +30,7 @@ from .constants import (
     INTKEYS,
     BACKUP
 )
-from .exceptions import UnknownLevelError, UnknownModeError
+from .exceptions import UnknownLevelError, UnknownModeError, UnknownStateError
 from .filehandlers import FileHandler
 from .registry import ClassRegistry
 from .stackframe import get_traceback, get_caller
@@ -373,10 +375,11 @@ class FileStream(OutputHandler):
 
     def write(self, record: str):
         """Write the log record to console and flush the handle."""
-        file_path = self.get_file_path()
-        mode = self._check_mode(self.file_mode)
 
-        with FileHandler(file_path, mode, encoding=self.encoding) as file_handler:
+        # disabled!
+        # mode = self._check_mode(self.file_mode)
+
+        with FileHandler(self.get_file_path(), "a", encoding=self.encoding) as file_handler:
             file_handler.write(f"{record}\n")
             self._file_size = file_handler.tell()
 
@@ -493,6 +496,10 @@ class BaseLogger(AbstractHandler):
         register(self.close)
 
     @property
+    def state(self):
+        return self.cfg.get("LOGGER", "state", fallback=STATE)
+
+    @property
     def level(self) -> int:
         return self.cfg.getint("LOGGER", "level", fallback=LEVELS.NOTSET)
 
@@ -580,6 +587,9 @@ class BaseLogger(AbstractHandler):
         if "handlers" in kwargs:
             self._update_handlers(kwargs)
 
+        if "state" in kwargs:
+            self._update_state(kwargs)
+
         super(BaseLogger, self)._update_config(**kwargs)
 
     def _update_level(self, kwargs):
@@ -611,6 +621,30 @@ class BaseLogger(AbstractHandler):
 
         elif isinstance(handlers, str):
             kwargs.update(handlers=[handlers])
+
+    def _update_state(self, kwargs):
+        try:
+            value = self._check_state(kwargs.get("state"))
+        except UnknownStateError:
+            raise
+        else:
+            kwargs.update(state=value)
+
+    @staticmethod
+    def _check_state(value: Union[str, bool, int]) -> str:
+
+        if isinstance(value, str):
+            value = value.upper()
+
+        if value not in (list(STATES.keys()) + ["ON", "OFF", 1, 0]):
+            raise UnknownStateError(
+                f"Unknown logging state: '{value}'!"
+            )
+
+        if value in STATES:
+            return STATES.get(value)
+
+        return value
 
 
 class Logger(BaseLogger):

@@ -18,6 +18,9 @@ def update(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
 
+        if args[0].state != "ON":
+            return
+
         if "timestamp" not in kwargs:
             kwargs.update(timestamp=get_local())
 
