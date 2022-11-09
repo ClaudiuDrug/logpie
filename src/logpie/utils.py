@@ -7,9 +7,7 @@ from os import makedirs, walk
 from os.path import basename, isdir, join, exists
 from re import finditer, MULTILINE
 from shutil import rmtree
-from threading import RLock
 from typing import Union, List, Generator
-from weakref import WeakValueDictionary
 from zipfile import ZipFile
 
 
@@ -105,14 +103,6 @@ def archive(file_path: str, data: Union[Generator, str]):
         else:
             path, name = data, basename(data)
             zip_handle.write(path, name)
-
-
-def dispatch_lock(name: str, container: WeakValueDictionary) -> RLock:
-    if name not in container:
-        # a strong reference is required
-        instance = RLock()
-        container[name] = instance
-    return container[name]
 
 
 def ensure_tree(path: str):

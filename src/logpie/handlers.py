@@ -10,13 +10,14 @@ from datetime import date, datetime
 from os.path import join, exists
 from string import Template
 from sys import stdout, stderr
+from threading import RLock
 from typing import List, TextIO, Union
+from weakref import WeakValueDictionary
 
 from cfgpie import get_config, CfgParser
 from colorpie import Style4Bit
 
 from .constants import (
-    THREAD_LOCKS,
     REGEX,
     FRAME,
     HANDLERS,
@@ -34,7 +35,7 @@ from .exceptions import UnknownLevelError, UnknownModeError, UnknownStateError
 from .filehandlers import FileHandler
 from .registry import ClassRegistry
 from .stackframe import get_traceback, get_caller
-from .utils import update, get_local, get_fields, cleanup, dispatch_lock, ensure_tree
+from .utils import update, get_local, get_fields, cleanup, ensure_tree
 
 
 @dataclass
@@ -53,6 +54,7 @@ class AbstractHandler(ABC):
     """Base abstract handler."""
 
     __shared__: dict = {}
+    __locks__ = WeakValueDictionary()
 
     @staticmethod
     def _check_config(instance: Union[CfgParser, str]) -> CfgParser:
@@ -68,7 +70,7 @@ class AbstractHandler(ABC):
 
     def __init__(self, name: str, **kwargs):
         self._name = name
-        self._lock = dispatch_lock(name, THREAD_LOCKS)
+        self._lock = self._dispatch(self._name)
         self.set_config(**kwargs)
 
     @property
@@ -115,6 +117,12 @@ class AbstractHandler(ABC):
                     dictionary={"LOGGER": kwargs},
                     source="<update>"
                 )
+
+    def _dispatch(self, name: str) -> RLock:
+        if name not in self.__locks__:
+            instance = RLock()
+            self.__locks__.update({name: instance})
+        return self.__locks__.get(name)
 
 
 class Formatter(AbstractHandler):

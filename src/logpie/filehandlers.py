@@ -2,19 +2,21 @@
 
 from abc import ABC, abstractmethod
 from os import fsync
+from threading import RLock
 from typing import IO, AnyStr, List, TextIO, BinaryIO, Union, Optional, Any
+from weakref import WeakValueDictionary
 
-from .constants import FILE_LOCKS
 from .filelockers import FileLocker
-from .utils import dispatch_lock
 
 
 class AbstractFileHandler(ABC):
     """Base abstract handler for all context-manager classes in this module."""
 
+    __locks__ = WeakValueDictionary()
+
     def __init__(self, file: str, *args, **kwargs):
         self._file, self._args, self._kwargs = file, args, kwargs
-        self._thread_lock = dispatch_lock(self._file, FILE_LOCKS)
+        self._thread_lock = self._dispatch(self._file)
 
     @property
     def mode(self) -> str:
@@ -101,6 +103,12 @@ class AbstractFileHandler(ABC):
             if hasattr(self, "_handle"):
                 self._release(self._handle)
                 del self._handle
+
+    def _dispatch(self, name: str) -> RLock:
+        if name not in self.__locks__:
+            instance = RLock()
+            self.__locks__.update({name: instance})
+        return self.__locks__.get(name)
 
     def __enter__(self) -> Union[IO, BinaryIO, TextIO]:
         self._thread_lock.acquire()

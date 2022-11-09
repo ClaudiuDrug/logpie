@@ -16,12 +16,6 @@ ROOT: str = realpath(dirname(MODULE.__file__))
 # logging instances:
 LOGGERS = WeakValueDictionary()
 
-# file locks:
-FILE_LOCKS = WeakValueDictionary()
-
-# thread locks:
-THREAD_LOCKS = WeakValueDictionary()
-
 # fmt regex:
 REGEX: str = r"(?P<placeholder>(?:\$\{)(?P<name>(?:\d|\_|\-|[a-zA-Z])+)(?:\}))"
 
