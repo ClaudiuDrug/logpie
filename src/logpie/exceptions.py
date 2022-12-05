@@ -5,20 +5,12 @@ class LogPieError(Exception):
     """Base exception class."""
 
 
-class UnknownModeError(LogPieError):
-    """Exception raised for unknown mode errors."""
-
-
 class UnknownLevelError(LogPieError):
-    """Exception raised for unknown level errors."""
+    """Exception raised for unknown logging level errors."""
 
 
 class UnknownStateError(LogPieError):
     """Exception raised for unknown state errors."""
-
-
-class HandlerKeyError(LogPieError):
-    """Exception raised for handler key errors."""
 
 
 class RegistryKeyError(KeyError):
@@ -31,3 +23,7 @@ class DuplicateKeyError(RegistryKeyError):
 
 class MissingKeyError(RegistryKeyError):
     """Exception raised for missing registry keys."""
+
+
+class UnknownHandlerError(LogPieError):
+    """Exception raised for unknown handler error."""

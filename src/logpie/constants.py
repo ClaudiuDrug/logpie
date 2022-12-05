@@ -16,56 +16,50 @@ ROOT: str = realpath(dirname(MODULE.__file__))
 # logging instances:
 LOGGERS = WeakValueDictionary()
 
-# fmt regex:
-REGEX: str = r"(?P<placeholder>(?:\$\{)(?P<name>(?:\d|\_|\-|[a-zA-Z])+)(?:\}))"
+# thread lock instances:
+LOCKS = WeakValueDictionary()
 
 # stack info:
 FRAME = namedtuple("FRAME", ["file", "line", "code", "traceback"])
 
-# default stream:
-HANDLERS: List[str] = ["console"]  # or "console" or both, always as list.
-
-# filestream modes:
-FILE_MODES: dict = {
-    "append": "a",
-    "truncate": "w",
-}
-
-# default state (enabled):
-STATE: str = "ON"  # or "OFF" (disabled)
-
-STATES: dict = {
-    True: "ON",
-    1: "ON",
-    "ENABLED": "ON",
-
-    False: "OFF",
-    0: "OFF",
-    "DISABLED": "OFF",
-}
+# fmt regex:
+REGEX: str = r"(?P<placeholder>(?:\$\{)(?P<name>(?:\d|\_|\-|[a-zA-Z])+)(?:\}))"
 
 
-# file handler defaults:
+HANDLERS_LIST: List[str] = ["console", "file"]
+
+
+class LOGGER:
+    """Logger defaults."""
+
+    HANDLERS: List[str] = ["console"]  # or "file" or both, always as list.
+    STATE: str = "ON"  # or "OFF" (disabled)
+
+
 class FILESTREAM:
+    """File handler defaults."""
+
     FOLDER: str = join(ROOT, "logs")
     IS_STRUCTURED: bool = True
     HAS_DATE: bool = True
     BASENAME: str = "logpie"
+    HAS_NAME: bool = False
     SHOULD_CYCLE: bool = True
     MAX_SIZE: int = 1024 * 1024  # 1MB
-    FILE_MODE: str = "append"  # or 'truncate'
     ENCODING: str = "UTF-8"
 
 
 class FORMATTING:
-    """Row formatting."""
+    """Row default formatting."""
+
     FORMAT: str = r"${timestamp} - ${level} - ${source}: ${message}"
     SOURCE_FMT: str = r"<${file}, ${line}, ${code}>"
     DATE_FMT: str = r"[%Y-%m-%d %H:%M:%S.%f]"
 
 
 class LEVELS:
-    """Default logging levels."""
+    """Logging levels. Defaults to `NOTSET`."""
+
     NOTSET: int = 0
     DEBUG: int = 10
     INFO: int = 20
@@ -74,7 +68,7 @@ class LEVELS:
     CRITICAL: int = 50
 
 
-# logging level 'str' keys:
+# logging levels ('str' keys):
 STRKEYS: dict = {
     "NOTSET": LEVELS.NOTSET,
     "DEBUG": LEVELS.DEBUG,
@@ -84,28 +78,23 @@ STRKEYS: dict = {
     "CRITICAL": LEVELS.CRITICAL,
 }
 
-# logging level 'int' keys:
-INTKEYS: dict = {value: key for key, value in STRKEYS.items()}
+# logging levels ('int' keys):
+INTKEYS = dict(
+    zip(
+        tuple(STRKEYS.values()),
+        tuple(STRKEYS.keys())
+    )
+)
 
-# default logging parameters:
-BACKUP: dict = {
-    "state": STATE,
-    "handlers": HANDLERS,
-    "level": LEVELS.NOTSET,
+# translating states to 'ON' and 'OFF':
+STATES: dict = {
+    True: "ON",
+    1: "ON",
+    "ENABLED": "ON",
+    "ON": "ON",
 
-    # formatting:
-    "format": FORMATTING.FORMAT,
-    "date_fmt": FORMATTING.DATE_FMT,
-    "source_fmt": FORMATTING.SOURCE_FMT,
-
-    # file stream settings:
-    "folder": FILESTREAM.FOLDER,
-    "is_structured": FILESTREAM.IS_STRUCTURED,
-
-    "has_date": FILESTREAM.HAS_DATE,
-    "basename": FILESTREAM.BASENAME,
-    "should_cycle": FILESTREAM.SHOULD_CYCLE,
-    "max_size": FILESTREAM.MAX_SIZE,
-    "file_mode": FILESTREAM.FILE_MODE,
-    "encoding": FILESTREAM.ENCODING,
+    False: "OFF",
+    0: "OFF",
+    "DISABLED": "OFF",
+    "OFF": "OFF",
 }
