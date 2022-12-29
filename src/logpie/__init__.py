@@ -4,7 +4,7 @@ from .constants import LOGGERS
 from .handlers import Logger
 
 
-def get_logger(name: str = "default", **kwargs):
+def get_logger(name: str = "logpie", **kwargs):
     if name not in LOGGERS:
         # a strong reference is required
         instance = Logger(name, **kwargs)

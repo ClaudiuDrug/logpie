@@ -447,7 +447,7 @@ class StreamHandler(BaseHandler):
 class BaseLogger(RowFactory, StreamHandler):
     """Base logging handler."""
 
-    def __init__(self, name: str = "default", **kwargs):
+    def __init__(self, name: str = "logpie", **kwargs):
 
         # allowed levels:
         self._allowed: dict = {}
