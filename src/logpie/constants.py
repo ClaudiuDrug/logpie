@@ -13,6 +13,9 @@ MODULE: ModuleType = modules.get("__main__")
 # root directory:
 ROOT: str = realpath(dirname(MODULE.__file__))
 
+# config instances:
+CONFIG: dict = {}
+
 # logging instances:
 LOGGERS = WeakValueDictionary()
 

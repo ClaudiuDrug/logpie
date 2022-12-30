@@ -223,7 +223,8 @@ def check_config(method):
 def _check_config(instance: Union[CfgParser, str]) -> CfgParser:
     if not isinstance(instance, (CfgParser, str)):
         raise TypeError(
-            f"Config 'instance' must be of type 'CfgParser' or 'str' not '{type(instance).__name__}'!"
+            f"Config parameter must be of type "
+            f"'CfgParser' or 'str' not '{type(instance).__name__}'!"
         )
 
     if isinstance(instance, str):

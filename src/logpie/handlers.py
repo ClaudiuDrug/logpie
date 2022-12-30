@@ -10,10 +10,10 @@ from string import Template
 from sys import stdout, stderr
 from typing import Union, List, TextIO
 
-from cfgpie import get_config, CfgParser
+from cfgpie import CfgParser
 from colorpie import Style4Bit
 
-from .constants import FRAME, LOGGER, LEVELS, INTKEYS, REGEX, FORMATTING, FILESTREAM
+from .constants import FRAME, CONFIG, LOGGER, LEVELS, INTKEYS, REGEX, FORMATTING, FILESTREAM
 from .exceptions import UnknownLevelError
 from .filehandlers import FileHandler
 from .registry import ClassRegistry
@@ -47,8 +47,6 @@ class Row(object):
 class BaseHandler(ABC):
     """Base handler."""
 
-    __config__: dict = {}
-
     def __init__(self, name: str, **kwargs):
         self._name = name
         self._thread_lock = dispatch_lock(name)
@@ -60,23 +58,25 @@ class BaseHandler(ABC):
 
     @property
     def cfg(self) -> CfgParser:
-        return self.__config__.get(self._name)
+        return CONFIG.get(self._name)
+
+    @cfg.setter
+    def cfg(self, instance: Union[CfgParser, str]):
+        CONFIG.update(
+            {self._name: _check_config(instance)}
+        )
 
     @check_config
     def set_config(self, **kwargs):
         self._thread_lock.acquire()
         try:
             if "config" in kwargs:
-                instance: CfgParser = _check_config(
-                    kwargs.pop("config")
-                )
-                self.__config__.update({self._name: instance})
+                self.cfg = kwargs.pop("config")
         except TypeError:
             raise
         else:
             if self.cfg is None:
-                instance: CfgParser = get_config(f"logpie.{self._name}")
-                self.__config__.update({self._name: instance})
+                self.cfg = self._name
 
             if len(kwargs) > 0:
                 self.cfg.read_dict(
