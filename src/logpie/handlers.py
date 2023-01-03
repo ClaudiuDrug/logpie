@@ -10,10 +10,11 @@ from string import Template
 from sys import stdout, stderr
 from typing import Union, List, TextIO
 
-from cfgpie import CfgParser
+from cfgpie import CfgParser, get_config
 from colorpie import Style4Bit
 
-from .constants import FRAME, CONFIG, LOGGER, LEVELS, INTKEYS, REGEX, FORMATTING, FILESTREAM
+from .constants import FRAME, LOGGER, LEVELS, INTKEYS, REGEX, FORMATTING, FILESTREAM
+from .descriptors import Configuration
 from .exceptions import UnknownLevelError
 from .filehandlers import FileHandler
 from .registry import ClassRegistry
@@ -25,7 +26,6 @@ from .utils import (
     get_fields,
     cleanup,
     check_config,
-    _check_config,
     check_state,
     _check_level,
 )
@@ -47,6 +47,8 @@ class Row(object):
 class BaseHandler(ABC):
     """Base handler."""
 
+    _cfg: CfgParser = Configuration()
+
     def __init__(self, name: str, **kwargs):
         self._name = name
         self._thread_lock = dispatch_lock(name)
@@ -56,30 +58,20 @@ class BaseHandler(ABC):
     def name(self):
         return self._name
 
-    @property
-    def cfg(self) -> CfgParser:
-        return CONFIG.get(self._name)
-
-    @cfg.setter
-    def cfg(self, instance: Union[CfgParser, str]):
-        CONFIG.update(
-            {self._name: _check_config(instance)}
-        )
-
     @check_config
     def set_config(self, **kwargs):
         self._thread_lock.acquire()
         try:
             if "config" in kwargs:
-                self.cfg = kwargs.pop("config")
+                self._cfg = kwargs.pop("config")
         except TypeError:
             raise
         else:
-            if self.cfg is None:
-                self.cfg = self._name
+            if self._cfg is None:
+                self._cfg = get_config(self._name)
 
             if len(kwargs) > 0:
-                self.cfg.read_dict(
+                self._cfg.read_dict(
                     dictionary={"LOGGER": kwargs},
                     source="<update>"
                 )
@@ -91,7 +83,7 @@ class Formatter(BaseHandler):
 
     @property
     def format(self) -> str:
-        return self.cfg.get(
+        return self._cfg.get(
             "LOGGER", "format",
             fallback=FORMATTING.FORMAT,
             raw=True
@@ -99,7 +91,7 @@ class Formatter(BaseHandler):
 
     @property
     def date_fmt(self):
-        return self.cfg.get(
+        return self._cfg.get(
             "LOGGER", "date_fmt",
             fallback=FORMATTING.DATE_FMT,
             raw=True
@@ -107,7 +99,7 @@ class Formatter(BaseHandler):
 
     @property
     def source_fmt(self):
-        return self.cfg.get(
+        return self._cfg.get(
             "LOGGER", "source_fmt",
             fallback=FORMATTING.SOURCE_FMT,
             raw=True
@@ -144,7 +136,7 @@ class OutputHandler(BaseHandler):
 
     def __init__(self, name: str, **kwargs):
         super(OutputHandler, self).__init__(name, **kwargs)
-        self._formatter = Formatter(name)
+        self._formatter = Formatter(name, config=self._cfg)
 
     @abstractmethod
     def write(self, *args, **kwargs):
@@ -224,50 +216,50 @@ class FileStream(OutputHandler):
 
     @property
     def should_cycle(self) -> bool:
-        return self.cfg.getboolean(
+        return self._cfg.getboolean(
             "LOGGER", "should_cycle",
             fallback=FILESTREAM.SHOULD_CYCLE
         )
 
     @property
     def is_structured(self) -> bool:
-        return self.cfg.getboolean(
+        return self._cfg.getboolean(
             "LOGGER", "is_structured",
             fallback=FILESTREAM.IS_STRUCTURED
         )
 
     @property
     def folder(self) -> str:
-        return self.cfg.get("LOGGER", "folder", fallback=FILESTREAM.FOLDER)
+        return self._cfg.get("LOGGER", "folder", fallback=FILESTREAM.FOLDER)
 
     @property
     def basename(self) -> str:
-        return self.cfg.get(
+        return self._cfg.get(
             "LOGGER", "basename",
             fallback=FILESTREAM.BASENAME
         )
 
     @property
     def has_name(self) -> bool:
-        return self.cfg.getboolean(
+        return self._cfg.getboolean(
             "LOGGER", "has_name",
             fallback=FILESTREAM.HAS_NAME
         )
 
     @property
     def has_date(self) -> bool:
-        return self.cfg.getboolean(
+        return self._cfg.getboolean(
             "LOGGER", "has_date",
             fallback=FILESTREAM.HAS_DATE
         )
 
     @property
     def max_size(self) -> int:
-        return self.cfg.getint("LOGGER", "max_size", fallback=FILESTREAM.MAX_SIZE)
+        return self._cfg.getint("LOGGER", "max_size", fallback=FILESTREAM.MAX_SIZE)
 
     @property
     def encoding(self) -> str:
-        return self.cfg.get("LOGGER", "encoding", fallback=FILESTREAM.ENCODING)
+        return self._cfg.get("LOGGER", "encoding", fallback=FILESTREAM.ENCODING)
 
     def write(self, record: str):
         """Write the log record to console and flush the handle."""
@@ -377,7 +369,7 @@ class RowFactory(BaseHandler):
 
     @property
     def format(self) -> str:
-        return self.cfg.get("LOGGER", "format", fallback=FORMATTING.FORMAT, raw=True)
+        return self._cfg.get("LOGGER", "format", fallback=FORMATTING.FORMAT, raw=True)
 
     def build(self, level: int, msg: str, *args, **kwargs) -> Row:
         """Construct and return a new `Row` object."""
@@ -406,7 +398,7 @@ class RowFactory(BaseHandler):
         """
         keys: List[str] = get_fields(REGEX, self.format)
 
-        new_row = make_dataclass(
+        with_extra = make_dataclass(
             "Row",
             fields=[
                 (key, type(value), field(default=value))
@@ -416,7 +408,7 @@ class RowFactory(BaseHandler):
             bases=(Row,)
         )
 
-        return new_row(**row)
+        return with_extra(**row)
 
 
 class StreamHandler(BaseHandler):
@@ -424,7 +416,7 @@ class StreamHandler(BaseHandler):
 
     @property
     def handlers(self) -> List[str]:
-        return self.cfg.getlist("LOGGER", "handlers", fallback=LOGGER.HANDLERS)
+        return self._cfg.getlist("LOGGER", "handlers", fallback=LOGGER.HANDLERS)
 
     def handle(self, row: Row):
         for handler in self._get_handlers():
@@ -439,7 +431,7 @@ class StreamHandler(BaseHandler):
     def _get_handler(self, target: str) -> OutputHandler:
         if target not in self.__dict__:
             self.__dict__.update(
-                {target: ClassRegistry.get(target, self._name)}
+                {target: ClassRegistry.get(target, self._name, config=self._cfg)}
             )
         return self.__dict__.get(target)
 
@@ -459,15 +451,15 @@ class BaseLogger(RowFactory, StreamHandler):
 
     @property
     def state(self) -> str:
-        return self.cfg.get("LOGGER", "state", fallback=LOGGER.STATE)
+        return self._cfg.get("LOGGER", "state", fallback=LOGGER.STATE)
 
     @property
     def level(self) -> int:
-        return self.cfg.getint("LOGGER", "level", fallback=LEVELS.NOTSET)
+        return self._cfg.getint("LOGGER", "level", fallback=LEVELS.NOTSET)
 
     @property
     def folder(self) -> str:
-        return self.cfg.get("LOGGER", "folder", fallback=FILESTREAM.FOLDER)
+        return self._cfg.get("LOGGER", "folder", fallback=FILESTREAM.FOLDER)
 
     @check_state
     def log(self, level: Union[int, str], msg: str, *args, **kwargs):

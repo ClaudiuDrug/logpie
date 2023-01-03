@@ -11,8 +11,6 @@ from threading import RLock
 from typing import Any, Tuple, Union, List, Generator
 from zipfile import ZipFile
 
-from cfgpie import get_config, CfgParser
-
 from .constants import STRKEYS, INTKEYS, STATES, LOCKS, HANDLERS_LIST
 from .exceptions import UnknownLevelError, UnknownStateError, UnknownHandlerError
 
@@ -218,19 +216,6 @@ def check_config(method):
         method(*args, **kwargs)
 
     return wrapper
-
-
-def _check_config(instance: Union[CfgParser, str]) -> CfgParser:
-    if not isinstance(instance, (CfgParser, str)):
-        raise TypeError(
-            f"Config parameter must be of type "
-            f"'CfgParser' or 'str' not '{type(instance).__name__}'!"
-        )
-
-    if isinstance(instance, str):
-        return get_config(instance)
-
-    return instance
 
 
 def _update_level(cls, kwargs: dict):
