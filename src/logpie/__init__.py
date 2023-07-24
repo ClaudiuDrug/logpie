@@ -1,15 +1,14 @@
 # -*- coding: UTF-8 -*-
 
-from .constants import LOGGERS
-from .handlers import Logger
+from .constants import STATE, LEVEL
+from .handlers import Formatter, StdStream, FileStream, BaseLogger, Logger
 
-
-def get_logger(name: str = "logpie", **kwargs) -> Logger:
-    if name not in LOGGERS:
-        # a strong reference is required
-        instance = Logger(name, **kwargs)
-        LOGGERS[name] = instance
-    return LOGGERS[name]
-
-
-__all__ = ["Logger", "get_logger"]
+__all__ = [
+    "STATE",
+    "LEVEL",
+    "Formatter",
+    "StdStream",
+    "FileStream",
+    "BaseLogger",
+    "Logger",
+]

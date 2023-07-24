@@ -1,29 +1,29 @@
 # -*- coding: UTF-8 -*-
 
+__all__ = [
+    "LoggingError",
+    "UnknownLevelError",
+    "UnknownStateError",
+    "UnknownHandlerError",
+    "UnknownFormatterError",
+]
 
-class LogPieError(Exception):
-    """Base exception class."""
+
+class LoggingError(Exception):
+    """Base logging exception."""
 
 
-class UnknownLevelError(LogPieError):
-    """Exception raised for unknown logging level errors."""
+class UnknownLevelError(LoggingError):
+    """Exception raised for unknown level errors."""
 
 
-class UnknownStateError(LogPieError):
+class UnknownStateError(LoggingError):
     """Exception raised for unknown state errors."""
 
 
-class RegistryKeyError(KeyError):
-    """Exception raised for registry key errors."""
+class UnknownHandlerError(LoggingError):
+    """Exception raised for unknown handler errors."""
 
 
-class DuplicateKeyError(RegistryKeyError):
-    """Exception raised for duplicate registry keys."""
-
-
-class MissingKeyError(RegistryKeyError):
-    """Exception raised for missing registry keys."""
-
-
-class UnknownHandlerError(LogPieError):
-    """Exception raised for unknown handler error."""
+class UnknownFormatterError(LoggingError):
+    """Exception raised for unknown formatter errors."""

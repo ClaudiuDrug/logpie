@@ -4,10 +4,18 @@ from os.path import basename
 from sys import exc_info, _getframe as get_frame
 from typing import Union
 
-from .constants import FRAME
+from .mapping import Traceback, Frame
+
+__all__ = [
+    "get_traceback",
+    "get_caller",
+    "get_file",
+    "get_code",
+    "get_message",
+]
 
 
-def get_traceback(exception: Union[BaseException, tuple, bool]) -> FRAME:
+def get_traceback(exception: Union[BaseException, tuple, bool]) -> Traceback:
     """
     Get information about the most recent exception caught by an except clause
     in the current stack frame or in an older stack frame.
@@ -27,15 +35,15 @@ def get_traceback(exception: Union[BaseException, tuple, bool]) -> FRAME:
     except AttributeError:
         raise
     else:
-        return FRAME(
+        return Traceback(
             file=get_file(tb_frame),
             line=exception[-1].tb_lineno,
             code=get_code(tb_frame),
-            traceback=f"{exception[0].__name__}({exception[1]})",
+            message=get_message(exception),
         )
 
 
-def get_caller(depth: int) -> FRAME:
+def get_caller(depth: int) -> Frame:
     """
     Get information about the frame object from the call stack.
 
@@ -45,13 +53,13 @@ def get_caller(depth: int) -> FRAME:
     try:
         frame = get_frame(depth)
     except ValueError:
-        raise
+        depth -= 1
+        return get_caller(depth)
     else:
-        return FRAME(
+        return Frame(
             file=get_file(frame),
             line=frame.f_lineno,
             code=get_code(frame),
-            traceback=None,
         )
 
 
@@ -68,3 +76,8 @@ def get_code(frame) -> str:
         return frame.f_code.co_name
     else:
         return f"{co_class}.{frame.f_code.co_name}"
+
+
+def get_message(exception: tuple) -> str:
+    """Extract the traceback message from the given `exception`."""
+    return f"{exception[0].__name__}({exception[1]})"
