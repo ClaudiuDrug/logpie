@@ -10,8 +10,6 @@ from sys import stdout, stderr
 from threading import RLock
 from typing import Union, List, Tuple, IO, TextIO, Mapping
 
-from colorpie import Style4Bit, COLORS
-
 from .constants import NAME, ROOT, INSTANCES, RLOCKS, STATE, LEVEL, FMT
 from .exceptions import UnknownLevelError, UnknownStateError, UnknownHandlerError, UnknownFormatterError
 from .mapping import Frame, Traceback, Row
@@ -20,9 +18,6 @@ from .utils import get_type, get_local, check_state, check_tree, get_size_of
 
 __all__ = [
     "Formatter",
-    "Handle",
-    "WarningHdl",
-    "ErrorHdl",
     "Handler",
     "StdStream",
     "FileStream",
@@ -103,72 +98,6 @@ class Formatter(object):
         if isinstance(source, Traceback):
             return f"{message} Traceback: {source.message}"
         return message
-
-
-class Handle(object):
-    """
-    Basic console output handle class.
-
-    This class provides basic write functionality for console output.
-    """
-
-    # Standard output stream as a handle.
-    _handle: TextIO = stdout
-
-    def write(self, message: str):
-        """
-        Writes a given message to the console.
-
-        :param message: The message to be written.
-        """
-        self._handle.write(f"{message}\n")
-        self._handle.flush()
-
-
-class WarningHdl(Handle):
-    """
-    Console output handle for warnings with text style formatter.
-
-    This class provides functionality to write warning messages
-    to the console with specific text style formatting (yellow color).
-    """
-
-    # Text style formatter for warnings.
-    _style: Style4Bit = Style4Bit(color=COLORS.YELLOW)
-
-    def write(self, message: str):
-        """
-        Writes a given warning message to the console with
-        appropriate text style formatting.
-
-        :param message: The warning message to be written.
-        """
-        message: str = self._style.format(message)
-        super(WarningHdl, self).write(message)
-
-
-class ErrorHdl(Handle):
-    """
-    Console output handle for errors with text style formatter.
-
-    This class provides functionality to write error messages to
-    the console with specific text style formatting (red color).
-    """
-
-    # Error output stream as a handle.
-    _handle: TextIO = stderr
-    # Text style formatter for errors.
-    _style: Style4Bit = Style4Bit(color=COLORS.RED)
-
-    def write(self, message: str):
-        """
-        Writes a given error message to the console with appropriate
-        text style formatting.
-
-        :param message: The error message to be written.
-        """
-        message: str = self._style.format(message)
-        super(ErrorHdl, self).write(message)
 
 
 class Handler(ABC):
@@ -265,11 +194,11 @@ class StdStream(Handler):
     """
 
     _handles: dict = {
-        LEVEL.DEBUG: Handle(),
-        LEVEL.INFO: Handle(),
-        LEVEL.WARNING: WarningHdl(),
-        LEVEL.ERROR: ErrorHdl(),
-        LEVEL.CRITICAL: ErrorHdl(),
+        LEVEL.DEBUG: stdout,
+        LEVEL.INFO: stdout,
+        LEVEL.WARNING: stdout,
+        LEVEL.ERROR: stderr,
+        LEVEL.CRITICAL: stderr,
     }
 
     def emit(self, row: Row):
@@ -283,18 +212,19 @@ class StdStream(Handler):
         """
         with self._thread_lock:
             self.write(
-                handle=self._handles.get(row.level),
+                handle=self._handles.get(row.level, stdout),
                 message=self._formatter.as_string(row)
             )
 
-    def write(self, handle: Handle, message: str):
+    def write(self, handle: TextIO, message: str):
         """
         Write the log message to the given handle.
 
         :param handle: Handle object to write log message.
         :param message: Log message to write.
         """
-        handle.write(message)
+        handle.write(f"{message}\n")
+        handle.flush()
 
 
 class FileStream(Handler):
