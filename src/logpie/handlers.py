@@ -57,9 +57,9 @@ class Formatter(object):
         Initialize the formatter with specified templates for `row`,
         `timestamp` and `stack`.
 
-        :param row: The template for a row.
-        :param timestamp: The template for a timestamp.
-        :param stack: The template for a stack.
+        :param row: The row formatting template.
+        :param timestamp: The timestamp formatting template.
+        :param stack: The stack info formatting template.
         """
         self._row = Template(row)
         self._timestamp = timestamp
