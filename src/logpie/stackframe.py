@@ -7,11 +7,7 @@ from typing import Union
 from .mapping import Traceback, Frame
 
 __all__ = [
-    "get_traceback",
-    "get_caller",
-    "get_file",
-    "get_code",
-    "get_message",
+    "get_traceback", "get_caller", "get_file", "get_code", "get_message"
 ]
 
 

@@ -7,13 +7,7 @@ from os.path import exists
 from typing import Any
 
 __all__ = [
-    "get_type",
-    "get_local",
-    "get_utc",
-    "check_state",
-    "check_tree",
-    "make_dirs",
-    "get_size_of",
+    "get_type", "get_local", "get_utc", "get_size", "check_tree"
 ]
 
 
@@ -33,17 +27,9 @@ def get_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def check_state(method):
-    """
-    Check if the logger is enabled and
-    proceed to record the message else pass.
-    """
-    @wraps(method)
-    def wrapper(logger, *args, **kwargs):
-        if logger.is_enabled():
-            method(logger, *args, **kwargs)
-
-    return wrapper
+def get_size(value: str) -> int:
+    """Get the size in bytes of the given `value`."""
+    return len(value.encode("UTF-8"))
 
 
 def check_tree(method):
@@ -63,8 +49,3 @@ def make_dirs(path: str):
         makedirs(path)
     except FileExistsError:
         pass
-
-
-def get_size_of(value: str) -> int:
-    """Get the size in bytes of the given `value`."""
-    return len(value.encode("UTF-8"))

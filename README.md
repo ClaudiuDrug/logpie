@@ -12,7 +12,7 @@ python -m pip install [--upgrade] logpie
 ```
 
 
-#### Key Features
+### Key Features:
 
 * Supports both file-based and console logging.
 * Allows chronological organization of log files by year and month.
@@ -40,38 +40,40 @@ if __name__ == '__main__':
 ```
 
 
+### Components:
+
 #### _class_ logpie.Logger
 
 ###### Parameters:
 
-  * `name` (required): str - The name of the logger (defaults to `logpie`).
+| Parameter  | Type      | Default         | Description                                                                           |
+|:-----------|:----------|:----------------|:--------------------------------------------------------------------------------------|
+| `name`     | `str`     | `logpie`        | The name of the logger. The name of the logger cannot be changed after instantiation! |
+| `level`    | `Level`   | `NOTSET`        | The severity level for this logger.                                                   |
+| `handlers` | `Handler` | `StreamHandler` | A handler or a tuple of handlers for this logger.                                     |
 
-    The name of the logger cannot be changed after instantiation!
-
-
-  * `level` (optional): LEVEL - Logging level of the logger (defaults to `LEVEL.NOTSET`).
-
-
-  * `state` (optional): STATE - State of the logger (defaults to `STATE.ON`).
-
-
-  * `handlers` (optional): Handler - A handler or a list/tuple of handlers for the logger (defaults to `None`).
-
-    `StreamHandler` will use the default handler `StdStream`.
 
 ###### Methods:
 
-  * `name`
+* `name`
 
     A property that returns the name of the logger.
-    > NOTE: Cannot be changed after instantiation!
+    
+    > NOTE:
+    >
+    > Cannot be changed after instantiation!
 
 
-  * `set_level(value: LEVEL)`
+* `level`
+
+    A property that returns the severity level used by the logger.
+
+
+* `level.setter`
 
     Sets the attribute `level` of the logger to _value_.
     All other messages with severity level less than this _value_ will be ignored.
-    By default, the logger is instantiated with severity level `LEVEL.NOTSET` (0) and therefore all messages are logged.
+    By default, the logger is instantiated with severity level `NOTSET` (0) and therefore all messages are logged.
 
     Available levels:
     * `DEBUG`
@@ -81,182 +83,158 @@ if __name__ == '__main__':
     * `CRITICAL`
 
 
-  * `set_state(value: STATE)`
-  
-    Sets the attribute `state` of the logger to _value_.
-    If set to `STATE.OFF` (disabled) no message will be recorded.
-    By default, the logger is instantiated with state `STATE.ON` (enabled) and therefore all messages are logged.
+* `handlers`
 
-  * `set_handlers(value: Union[Handler, List[Handler], Tuple[Handler]])`
+    A property that returns the handlers used by the logger.
 
-    Sets the stream handlers for the logger to __value__.
+
+* `handlers.setter`
+
+    Sets the logging handlers for the logger.
 
     Available handlers:
-      * `StdStream`  
-      * `FileStream`  
+    * `StreamHandler`
+    * `FileHandler`
 
 
-  * `del_handlers()`
-
-    Delete the handlers of the logger.
-
-
-  * `add_handler(value: Handler)`
+* `add_handler(value: Handler)`
 
     Add a handler to the logger.
 
 
-  * `remove_handler(value: Handler)`
+* `remove_handler(value: Handler)`
 
     Remove a handler from the logger.
 
 
-  * `is_enabled()`
+* `has_handlers`
 
-    Return `True` if the logger is enabled and `False` otherwise.
-
-
-  * `log(level: LEVEL, msg: str, *args, **kwargs)`
-  
-    Log a message with `msg % args` with level `level`.
-    To add exception info to the message use the `exc_info` keyword argument with a `True` value.
-  
-    Example:
-  
-      ```python
-      log(LEVEL.ERROR, "Testing '%s' messages!", "ERROR", exc_info=True)
-      ```
-
-      or
-
-      ```python
-      log(LEVEL.ERROR, "Testing '%(level)s' messages!", {"level": "ERROR"}, exc_info=True)
-      ```
-
-    To get the correct frame from the stack, when called, the `depth` param must be set to 8 or called inside a logging function.
-
-    Example:
-  
-      ```python
-      log(LEVEL.DEBUG, "Testing 'DEBUG' messages!", depth=8)
-      ```
-
-      or
-
-      ```python
-      def debug(self, msg: str, *args, **kwargs):
-        self.log(LEVEL.DEBUG, msg, *args, **kwargs)
-      ```
+    Check if the logger instance has any handlers.
 
 
-  * `close()`
+* `close()`
 
     Close the handlers of the logger and release the resources.
 
 
-  * `debug(msg: str, *args, **kwargs)`
+* `debug(msg: str, *args, **kwargs)`
 
-    Log a message with `msg % args` with level `DEBUG`.
-    To add exception info to the message use the `exc_info` keyword argument with a `True` value.
+    Log a `msg % args` with level `DEBUG`.
+    To add exception info to the message use the `exc_info` keyword argument with a True value.
 
-    Example:
+    **Example:**
 
-      ```python
-      log.debug("Testing 'DEBUG' messages!")
-      ```
+    ```python
+    log.debug("Testing '%s' messages!", "DEBUG", exc_info=True)
+    ```
 
-  * `info(msg: str, *args, **kwargs)`
+    or
 
-    Log a message with `msg % args` with level `INFO`
-    The arguments and keyword arguments are interpreted as for `debug()` 
-
-    Example:
-
-      ```python
-      log.info("Testing 'INFO' messages!")
-      ```
-
-  * `warning(msg: str, *args, **kwargs)`
-
-    Log a message with `msg % args` with level `WARNING`
-    The arguments and keyword arguments are interpreted as for `debug()` 
-
-    Example:
-
-      ```python
-      log.warning("Testing 'WARNING' messages!")
-      ```
+    ```python
+    log.debug("Testing '%(level)s' messages!", {"level": "DEBUG"}, exc_info=True)
+    ```
 
 
-  * `error(msg: str, *args, **kwargs)`
+* `info(msg: str, *args, **kwargs)`
 
-    Log a message with `msg % args` with level `ERROR`
-    The arguments and keyword arguments are interpreted as for `debug()` 
+    Log a `msg % args` with level `INFO`.
+    To add exception info to the message use the `exc_info` keyword argument with a True value.
 
-    Example:
+    **Example:**
 
-      ```python
-      try:
-          raise TypeError("Type error occurred!")
-      except TypeError:
-          log.error("Action failed!", exc_info=True)
-      ```
+    ```python
+    log.info("Testing '%s' messages!", "INFO", exc_info=True)
+    ```
 
-      or
+    or
 
-      ```python
-      try:
-          raise TypeError("Type error occurred!")
-      except TypeError as type_error:
-          log.error("Action failed!", exc_info=type_error)
-      ```
+    ```python
+    log.info("Testing '%(level)s' messages!", {"level": "INFO"}, exc_info=True)
+    ```
 
 
-  * `exception(msg: str, *args, **kwargs)`
+* `warning(msg: str, *args, **kwargs)`
 
-    Just a more convenient way of logging an `ERROR` message with `exc_info=True`.
+    Log a `msg % args` with level `WARNING`.
+    To add exception info to the message use the `exc_info` keyword argument with a True value.
 
-    Example:
+    **Example:**
 
-      ```python
-      try:
-          raise TypeError("Type error occurred!")
-      except TypeError:
-          log.exception("Action failed!")
-      ```
-
-
-  * `critical(msg: str, *args, **kwargs)`
-
-    Log a message with `msg % args` with level `CRITICAL`
-    The arguments and keyword arguments are interpreted as for `debug()` 
-
-    Example:
-
-      ```python
-      try:
-          raise TypeError("Critical error occurred!")
-      except TypeError as critical_error:
-          log.critical("Action failed!", exc_info=critical_error)
-      ```
+    ```python
+    log.warning("Testing '%s' messages!", "WARNING", exc_info=True)
+    ```
+    
+    or
+    
+    ```python
+    log.warning("Testing '%(level)s' messages!", {"level": "WARNING"}, exc_info=True)
+    ```
 
 
-### StreamHandlers:
+* `error(msg: str, *args, **kwargs)`
+
+    Log a `msg % args` with level `ERROR`.
+    To add exception info to the message use the `exc_info` keyword argument with a True value.
+
+    **Example:**
+
+    ```python
+    try:
+        raise TypeError("Type error occurred!")
+    except TypeError:
+        log.error("Action failed!", exc_info=True)
+    ```
+    
+    or
+    
+    ```python
+    try:
+        raise TypeError("Type error occurred!")
+    except TypeError as type_error:
+        log.error("Action failed!", exc_info=type_error)
+    ```
 
 
-By default, the logger streams all messages to the console output `sys.stdout` and `sys.stderr` using the `StdStream` handler.
-To log messages into a file we must use the `FileStream` handler.
+* `critical(msg: str, *args, **kwargs)`
+
+    Log a `msg % args` with level `CRITICAL`.
+    To add exception info to the message use the `exc_info` keyword argument with a True value.
+
+    **Example:**
+
+    ```python
+    try:
+        raise TypeError("Critical error occurred!")
+    except TypeError:
+        log.critical("Action failed!", exc_info=True)
+    ```
+
+    or
+
+    ```python
+    try:
+        raise TypeError("Critical error occurred!")
+    except TypeError as critical_error:
+        log.critical("Action failed!", exc_info=critical_error)
+    ```
+
+
+### Handlers:
+
+
+By default, the logger streams all messages to the console output `sys.stdout` using the `StreamHandler()` handler.
+To log messages into a file we must use the `FileHandler()` handler.
 
 
 To use a different handler or more:
 
 ```python
-from logpie import Logger, StdStream, FileStream
+from logpie import Logger, StreamHandler, FileHandler
 
-console_hdlr = StdStream()
-file_hdlr = FileStream("my_log_file.log")
+console = StreamHandler()
+file = FileHandler("my_log_file.log")
 
-log = Logger("my_logger", handlers=[console_hdlr, file_hdlr])
+log = Logger("my_logger", handlers=(console, file))
 
 
 if __name__ == '__main__':
@@ -265,86 +243,67 @@ if __name__ == '__main__':
 ```
 
 
-#### _class_ logpie.StdStream
+#### _class_ logpie.StreamHandler
 
 ###### Parameters:
 
-* `formatter`: Formatter - Formatter object to format the logs (defaults to `None`).
+| Parameter   | Type        | Default | Description                                            |
+|:------------|:------------|:--------|:-------------------------------------------------------|
+| `formatter` | `Formatter` | `None`  | Formatter object used to format the log messages.      |
+| `handle`    | `TextIO`    | `None`  | The handle used to output the messages to the console. |
 
 
 ###### Methods:
+
+* `handle`
+
+    A property that returns the handle in use.
+
+
+* `handle.setter`
+
+    Set the handle used by the handler.
+
 
 * `emit(row: Row)`
 
     Emit a log row.
     This method acquires the thread lock and passes the log row formatted as
-    a string along with the handle associated with the logging level to the `write()` method.
+    a string to the `write()` method.
 
 
-* `write(handle: TextIO, message: str)`
+* `write(message: str)`
 
     Write the log `message` using the given `handle`.
 
 
-#### _class_ logpie.FileStream
+#### _class_ logpie.FileHandler
 
 ###### Parameters:
 
-* `filename` (required): str - Name of the file to write logs into.
+| Parameter       | Type        | Default                  | Description                                                                                                                                                                        |
+|:----------------|:------------|:-------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `filename`      | `str`       | `None`                   | Name of the file to write logs into.                                                                                                                                               |
+| `mode`          | `str`       | `a`                      | Mode of file opening: `a` for appending and `w` for truncating the file.                                                                                                           |
+| `encoding`      | `str`       | `UTF-8`                  | Encoding of the file.                                                                                                                                                              |
+| `max_size`      | `int`       | `(1024 ** 2) * 4` (4 MB) | Maximum size of the log file, in bytes. If `cycle` is enabled, when the file reaches the maximum size, the handler will switch to another file by incrementing the index with `1`. |
+| `cycle`         | `bool`      | `False`                  | Whether to cycle files when maximum size is reached. When the file reaches the maximum size, the handler will switch to another file by incrementing the index with `1`.           |
+| `chronological` | `bool`      | `False`                  | Whether to sort files chronologically.                                                                                                                                             |
+| `date_prefix`   | `bool`      | `False`                  | Whether to add date prefix to filename.                                                                                                                                            |
+| `date_aware`    | `bool`      | `False`                  | Whether to use date awareness to the log file. If `date_prefix` is enabled this will enforce the current date to be used rather than the date when the handler was created.        |
+| `formatter`     | `Formatter` | `None`                   | Formatter object to format the logs.                                                                                                                                               |
 
+When `chronological` is enabled, the folder tree is by default structured as follows:
 
-* `mode` (optional): str - Mode of file opening (defaults to `a`).
-    
-    * `a` for appending to file.
-    * `w` for truncating the file.
-
-
-* `encoding` (optional): str - Encoding of the file (defaults to `UTF-8`).
-
-
-* `folder`: str - Folder to write logs in (defaults to `None`).
-
-    If omitted and filename is not a full file path it defaults to
-    the `logs` folder at the root of your project.
-
-
-* `max_size`: int - Maximum size of the log file (defaults to `(1024 ** 2) * 4`, 4 MB).
-
-    If `cycle` is enabled, when the file reaches the maximum size,
-    the handler will switch to another file by incrementing the index with `1`.
-
-
-* `cycle`: bool - Whether to cycle files when maximum size is reached (defaults to `False`).
-
-    When the file reaches the maximum size,
-    the handler will switch to another file by incrementing the index with `1`
-
-
-* `chronological`: bool - Whether to sort files chronologically (defaults to `False`).
-
-    The folder tree is by default structured as follows:
-
-    ```markdown
-    .
-    └─logs
-      └─year (ex: 2022)
+```markdown
+.
+└─logs
+    └─year (ex: 2022)
         └─month (ex: january)
-          ├─2022-08-01_logpie.1.log
-          ├─2022-08-01_logpie.2.log
-          └─2022-08-01_logpie.3.log
-    ```
-
-
-* `date_prefix`: bool - Whether to add date prefix to filename (defaults to `False`).
-
-
-* `date_aware`: bool - Whether to use date awareness to the log file (defaults to `False`).
-
-    If `date_prefix` is enabled this will enforce the current date to be
-    used rather than the date when the handler was created.
-
-
-* `formatter`: Formatter - Formatter object to format the logs (defaults to `None`).
+            ├─2022-08-01_logpie.1.log
+            ├─2022-08-01_logpie.2.log
+            └─2022-08-01_logpie.3.log
+```
 
 
 ###### Methods:
@@ -361,12 +320,14 @@ if __name__ == '__main__':
     Write a log `message` into the file.
 
 
+#### _class_ logpie.Formatter
+
 The log rows are formatted with the help of the `Formatter` class.
 
-To change the formatting:
+**Example:**
 
 ```python
-from src.logpie import Logger, FileStream, Formatter
+from logpie import Logger, FileHandler, Formatter
 
 # here we're also adding a new field (e.g. 'ip') used by the 'extra' keyword arguments.
 my_formatter = Formatter(
@@ -374,7 +335,7 @@ my_formatter = Formatter(
     timestamp="[%Y-%m-%d %H:%M:%S.%f]",
     stack="<${file}, ${line}, ${code}>",
 )
-my_handler = FileStream("my_log_file.log", formatter=my_formatter)
+my_handler = FileHandler("my_log_file.log", formatter=my_formatter)
 log = Logger("my_logger", handlers=my_handler)
 
 
@@ -384,23 +345,13 @@ if __name__ == '__main__':
 ```
 
 
-#### _class_ logpie.Formatter
-
 ###### Parameters:
 
-* `row`: str - The row formatting template.
-
-    This template uses the `string.Template` style with placeholders (e.g. `${field}`).
-
-
-* `timestamp`: str - The timestamp formatting template.
-
-    This template uses the `datetime.strftime()` style (e.g. `%Y-%m-%d %H:%M:%S.%f`).
-
-
-* `stack`: str - The stack info formatting template.
-
-    This template uses the `string.Template` style with placeholders (e.g. `${field}`).
+| Parameter | Type | Default                                           | Description                                                                                                             |
+|:----------|:-----|:--------------------------------------------------|:------------------------------------------------------------------------------------------------------------------------|
+| row       | str  | '${timestamp} - ${level} - ${source}: ${message}' | The row formatting template. This template uses the `string.Template` style with placeholders (e.g. `${field}`).        |
+| time      | str  | '[%Y-%m-%d %H:%M:%S.%f]'                          | The timestamp formatting template. This template uses the `datetime.strftime()` style (e.g. `%Y-%m-%d %H:%M:%S.%f`).    |
+| stack     | str  | '<${file}, ${line}, ${code}>'                     | The stack info formatting template. This template uses the `string.Template` style with placeholders (e.g. `${field}`). |
 
 
 ###### Methods:

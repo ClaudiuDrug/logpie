@@ -3,10 +3,16 @@
 from collections import namedtuple
 
 __all__ = [
-    "Frame",
-    "Traceback",
-    "Row",
+    "Level", "Frame", "Traceback", "Row"
 ]
+
+Level: namedtuple = namedtuple(
+    "Level",
+    [
+        "name",
+        "value"
+    ]
+)
 
 Frame: namedtuple = namedtuple(
     "Frame",
@@ -23,7 +29,7 @@ Traceback: namedtuple = namedtuple(
         "file",
         "line",
         "code",
-        "message",
+        "message"
     ]
 )
 
@@ -35,6 +41,6 @@ Row: namedtuple = namedtuple(
         "level",
         "source",
         "message",
-        "extra",
+        "extra"
     ]
 )
