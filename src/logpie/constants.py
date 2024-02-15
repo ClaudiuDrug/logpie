@@ -1,7 +1,7 @@
 # -*- coding: UTF-8 -*-
 
-from os.path import dirname, realpath, join
-from sys import modules
+from os.path import dirname, realpath, abspath, join
+from sys import modules, argv
 from types import ModuleType
 from weakref import WeakValueDictionary
 
@@ -22,7 +22,12 @@ NAME: str = "logpie"
 MODULE: ModuleType = modules.get("__main__")
 
 # root directory:
-ROOT: str = realpath(dirname(MODULE.__file__))
+try:
+    # Try to access '__file__' attribute
+    ROOT: str = realpath(dirname(MODULE.__file__))
+except AttributeError:
+    # Fallback: Use the current working directory or script path from argv
+    ROOT: str = realpath(dirname(abspath(argv[0])))
 
 # container for `Logger` instances:
 INSTANCES: WeakValueDictionary = WeakValueDictionary()

@@ -393,7 +393,7 @@ class RowFactory:
             args = args[0]
         try:
             message = message % args
-        except TypeError:
+        except (TypeError, KeyError, ValueError):
             message = f"{message} (args: {args})"
         return message
 
@@ -426,12 +426,16 @@ class RowFactory:
             exc_info=exc_info,
             depth=depth
         )
+
+        if len(args) > 0:
+            msg: str = self._attach_info(msg, args)
+
         return Row(
             timestamp=timestamp,
             name=name,
             level=level,
             source=source,
-            message=self._attach_info(msg, args),
+            message=msg,
             extra=extra,
         )
 
